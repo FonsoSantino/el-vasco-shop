@@ -156,8 +156,8 @@ export async function createProduct(formData: FormData) {
     revalidatePath("/electronica");
     revalidatePath("/importados-express");
 
-    // Fire-and-forget — never block the response waiting for Blob upload
-    uploadDbToBlob().catch(console.error);
+    // Await the upload. In Serverless, background tasks are killed when response is sent.
+    await uploadDbToBlob();
     
     return { success: true, data: { id, name, slug } };
   } catch (error) {
@@ -317,8 +317,8 @@ export async function updateProduct(id: string, formData: FormData) {
     revalidatePath("/importados-express");
     revalidatePath("/");
 
-    // Fire-and-forget — never block the response waiting for Blob upload
-    uploadDbToBlob().catch(console.error);
+    // Await the upload. In Serverless, background tasks are killed when response is sent.
+    await uploadDbToBlob();
     return { success: true };
   } catch (error) {
     console.error("Error updating product:", error);
@@ -394,8 +394,8 @@ export async function deleteProduct(id: string) {
     revalidatePath("/importados-express");
     revalidatePath("/");
 
-    // Fire-and-forget — never block the response waiting for Blob upload
-    uploadDbToBlob().catch(console.error);
+    // Await the upload. In Serverless, background tasks are killed when response is sent.
+    await uploadDbToBlob();
     
     return { success: true };
   } catch (error) {

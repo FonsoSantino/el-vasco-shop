@@ -52,6 +52,9 @@ export async function createInventoryMovement(formData: FormData) {
     revalidatePath("/admin/inventario");
     revalidatePath("/admin/productos");
     
+    const { uploadDbToBlob } = await import("@/lib/db-persistence");
+    await uploadDbToBlob();
+    
     return { success: true };
   } catch (error: any) {
     console.error("Error en movimiento de inventario:", error);

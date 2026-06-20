@@ -38,6 +38,25 @@ if (isProduction) {
   dbPath = TMP_DB_PATH;
 }
 
+// ─── Top-level await Blob sync (cold start) ───────────────────────────
+// We must await the download before opening the DB. If we use fire-and-forget,
+// Vercel will freeze the background task when the request finishes, causing the 
+// download to never complete and data to be lost.
+if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
+  const bundledPath = path.join(process.cwd(), "database.db");
+  const bundledSize = fs.existsSync(bundledPath) ? fs.statSync(bundledPath).size : 0;
+  const tmpSize = fs.existsSync(TMP_DB_PATH) ? fs.statSync(TMP_DB_PATH).size : 0;
+
+  // If sizes match, /tmp is likely the bare bundled copy. We pull the latest from Blob.
+  if (tmpSize === bundledSize) {
+    try {
+      await downloadDbFromBlob();
+    } catch (e) {
+      console.error("[db] Error awaiting Blob download:", e);
+    }
+  }
+}
+
 // ─── Open the database (synchronous) ─────────────────────────────────────────
 const db = new Database(dbPath);
 db.pragma("journal_mode = DELETE"); // Use DELETE mode — safer than WAL on /tmp
@@ -50,25 +69,11 @@ try {
   console.error("[db] Schema setup error:", e);
 }
 
-// ─── Async Blob sync (cold start, fire-and-forget) ───────────────────────────
-// We intentionally do NOT close/reopen the db here to avoid crashes.
-// The Blob version will be used by the NEXT container that cold-starts.
-// Since uploads happen after every write, the Blob always has the latest data.
-if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
-  // Only attempt if /tmp/database.db was just created from bundled (small size gap)
-  // — i.e., we don't bother on warm containers already running with good data.
-  const bundledPath = path.join(process.cwd(), "database.db");
-  const bundledSize = fs.existsSync(bundledPath)
-    ? fs.statSync(bundledPath).size
-    : 0;
-  const tmpSize = fs.existsSync(TMP_DB_PATH)
-    ? fs.statSync(TMP_DB_PATH).size
-    : 0;
+// Export a getter so every import always gets the current instance
+const dbProxy = new Proxy({} as ReturnType<typeof Database>, {
+  get(_target, prop) {
+    return (db as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
 
-  // If sizes match → /tmp is the bundled copy → try to pull a fresher Blob version
-  if (tmpSize === bundledSize) {
-    downloadDbFromBlob().catch(console.error);
-  }
-}
-
-export default db;
+export default dbProxy;
