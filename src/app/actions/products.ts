@@ -2,7 +2,7 @@
 
 import fs from "fs";
 import path from "path";
-import db from "@/lib/db";
+import db, { syncFromBlob } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parsePrice } from "@/lib/utils";
 import { uploadDbToBlob } from "@/lib/db-persistence";
