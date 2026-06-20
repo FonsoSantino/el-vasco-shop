@@ -107,9 +107,16 @@ export function setupSchema(db: any) {
       subtotal REAL,
       shipping REAL DEFAULT 0,
       total REAL,
+      status TEXT DEFAULT 'PENDIENTE',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    db.prepare("SELECT status FROM Orders LIMIT 1").get();
+  } catch (e) {
+    db.exec("ALTER TABLE Orders ADD COLUMN status TEXT DEFAULT 'PENDIENTE'");
+  }
 
   // Order Items Table
   db.exec(`

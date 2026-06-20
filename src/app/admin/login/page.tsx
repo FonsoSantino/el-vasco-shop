@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 
 export default function AdminLogin() {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -17,12 +18,11 @@ export default function AdminLogin() {
     setIsLoading(true);
     setError("");
 
-    // Temporary mock login for development
-    if (password === "admin123") {
+    if (username === "admin" && password === "admin123") {
       document.cookie = "admin_session=true; path=/; max-age=86400";
       router.push("/admin");
     } else {
-      setError("Contraseña incorrecta");
+      setError("Usuario o contraseña incorrectos");
       setIsLoading(false);
     }
   };
@@ -50,14 +50,21 @@ export default function AdminLogin() {
         </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-4">
+            <input
+              type="text"
+              placeholder="Usuario"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full bg-background border border-foreground/10 rounded-xl px-4 py-3 focus:outline-none focus:border-gold transition-colors"
+              autoFocus
+            />
             <input
               type="password"
               placeholder="Contraseña"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-background border border-foreground/10 rounded-xl px-4 py-3 focus:outline-none focus:border-gold transition-colors"
-              autoFocus
             />
             {error && (
               <p className="text-red-500 text-sm flex items-center mt-1">

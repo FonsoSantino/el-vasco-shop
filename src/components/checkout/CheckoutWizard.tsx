@@ -7,9 +7,12 @@ import { formatCurrency } from "@/lib/utils";
 import { ArrowRight, ArrowLeft, Package, MapPin, CreditCard, CheckCircle2, ChevronRight, Truck, MessageCircle } from "lucide-react";
 import Link from "next/link";
 
+import { createOrder } from "@/app/actions/orders";
+
 export default function CheckoutWizard() {
   const { items, getTotal, clearCart } = useCartStore();
   const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Step 1: Personal Info
   const [firstName, setFirstName] = useState("");
@@ -40,7 +43,7 @@ export default function CheckoutWizard() {
     if (province.trim().toLowerCase() !== "misiones" && company === "Neo Mandados") {
       setCompany("");
     }
-  }, [province]);
+  }, [province, company]);
 
   const canGoNext = () => {
     if (step === 1) return firstName.trim() !== "" && lastName.trim() !== "" && phone.trim() !== "";
@@ -60,8 +63,26 @@ export default function CheckoutWizard() {
   };
   const handlePrev = () => setStep((s) => Math.max(1, s - 1));
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    setIsSubmitting(true);
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
+    // Save order to database
+    await createOrder({
+      fullName,
+      phone,
+      deliveryType,
+      province,
+      city,
+      address,
+      postalCode,
+      company,
+      observations: reference,
+      subtotal: total,
+      shipping: 0,
+      total,
+      items
+    });
     
     // Build exact WhatsApp format requested
     const lines = [];
@@ -406,10 +427,10 @@ export default function CheckoutWizard() {
 
               <button 
                 onClick={step === 4 ? handleFinish : handleNext} 
-                disabled={!canGoNext()}
+                disabled={!canGoNext() || isSubmitting}
                 className="flex items-center gap-2 px-8 py-4 rounded-full bg-gold text-black font-bold premium-shadow hover:scale-105 hover:bg-gold-dark transition-all disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed"
               >
-                {step === 4 ? "Enviar por WhatsApp" : "Continuar"} 
+                {step === 4 ? (isSubmitting ? "Procesando..." : "Enviar por WhatsApp") : "Continuar"} 
                 {step < 4 && <ArrowRight className="w-5 h-5" />}
               </button>
             </div>

@@ -120,17 +120,25 @@ export async function createProduct(formData: FormData) {
     const images = formData.getAll("images") as File[];
     if (images && images.length > 0 && images[0].size > 0) {
       const file = images[0];
-      const buffer = Buffer.from(await file.arrayBuffer());
       const isProduction = process.env.NODE_ENV === 'production';
-      const uploadDir = isProduction
-        ? path.join('/tmp', 'uploads')
-        : path.join(process.cwd(), 'public/uploads');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
       const filename = `${id}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "")}`;
-      fs.writeFileSync(path.join(uploadDir, filename), buffer);
-      imageId = isProduction ? `/api/uploads/${filename}` : `/uploads/${filename}`;
+      
+      if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
+        const { put } = await import("@vercel/blob");
+        const blob = await put(`uploads/${filename}`, file, {
+          access: "public",
+          addRandomSuffix: false,
+        });
+        imageId = blob.url;
+      } else {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const uploadDir = path.join(process.cwd(), 'public/uploads');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        fs.writeFileSync(path.join(uploadDir, filename), buffer);
+        imageId = `/uploads/${filename}`;
+      }
     }
 
     const isFeatured = formData.get("isFeatured") === "true" ? 1 : 0;
@@ -282,26 +290,41 @@ export async function updateProduct(id: string, formData: FormData) {
     const images = formData.getAll("images") as File[];
     if (images && images.length > 0 && images[0].size > 0) {
       const file = images[0];
-      const buffer = Buffer.from(await file.arrayBuffer());
       const isProduction = process.env.NODE_ENV === 'production';
-      const uploadDir = isProduction
-        ? path.join('/tmp', 'uploads')
-        : path.join(process.cwd(), 'public/uploads');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
       const filename = `${id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "")}`;
-      fs.writeFileSync(path.join(uploadDir, filename), buffer);
-      updates.push("imageId = ?"); values.push(isProduction ? `/api/uploads/${filename}` : `/uploads/${filename}`);
+      
+      let newImageId = "";
+      
+      if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
+        const { put, del } = await import("@vercel/blob");
+        const blob = await put(`uploads/${filename}`, file, {
+          access: "public",
+          addRandomSuffix: false,
+        });
+        newImageId = blob.url;
+        updates.push("imageId = ?"); values.push(newImageId);
+        
+        // Delete old image if it's a blob URL
+        const oldProduct = db.prepare("SELECT imageId FROM Product WHERE id = ?").get(id) as DbProduct | undefined;
+        if (oldProduct?.imageId && oldProduct.imageId.includes("vercel-storage.com")) {
+          try { await del(oldProduct.imageId); } catch (e) { console.error("Error deleting old blob", e); }
+        }
+      } else {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const uploadDir = path.join(process.cwd(), 'public/uploads');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        fs.writeFileSync(path.join(uploadDir, filename), buffer);
+        newImageId = `/uploads/${filename}`;
+        updates.push("imageId = ?"); values.push(newImageId);
 
-      // Delete old image if exists
-      const oldProduct = db.prepare("SELECT imageId FROM Product WHERE id = ?").get(id) as DbProduct | undefined;
-      if (oldProduct?.imageId && !oldProduct.imageId.startsWith('http')) {
-        const oldFilename = oldProduct.imageId.split('/').pop()!;
-        const oldFilePath = isProduction
-          ? path.join('/tmp', 'uploads', oldFilename)
-          : path.join(process.cwd(), 'public', oldProduct.imageId);
-        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+        // Delete old local image
+        const oldProduct = db.prepare("SELECT imageId FROM Product WHERE id = ?").get(id) as DbProduct | undefined;
+        if (oldProduct?.imageId && !oldProduct.imageId.startsWith('http')) {
+          const oldFilePath = path.join(process.cwd(), 'public', oldProduct.imageId);
+          if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+        }
       }
     }
 
@@ -379,9 +402,14 @@ export async function deleteProduct(id: string) {
   try {
     const product = db.prepare("SELECT imageId FROM Product WHERE id = ?").get(id) as { imageId?: string } | undefined;
     if (product && product.imageId) {
-      const filePath = path.join(process.cwd(), "public", product.imageId);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      if (product.imageId.includes("vercel-storage.com")) {
+        const { del } = await import("@vercel/blob");
+        try { await del(product.imageId); } catch (e) { console.error("Error deleting blob on product delete", e); }
+      } else if (!product.imageId.startsWith("http")) {
+        const filePath = path.join(process.cwd(), "public", product.imageId);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
       }
     }
     

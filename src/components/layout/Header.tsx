@@ -15,19 +15,24 @@ export function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/catalog?q=${encodeURIComponent(searchQuery)}`);
       setIsSearchOpen(false);
+      setIsMobileMenuOpen(false);
     }
   };
+
+  const closeMenu = () => setIsMobileMenuOpen(false);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-foreground/10 bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/90 shadow-sm">
       <div className="container mx-auto px-6 h-20 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center shrink-0 hover:scale-[1.02] transition-all duration-300">
+        <Link href="/" className="flex items-center shrink-0 hover:scale-[1.02] transition-all duration-300" onClick={closeMenu}>
           <span className="text-xl md:text-2xl font-extrabold tracking-tighter text-foreground drop-shadow-sm">
             EL VASCO <span className="text-gradient-gold">SHOP</span>
           </span>
@@ -53,14 +58,14 @@ export function Header() {
         </nav>
 
         {/* Actions */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 md:space-x-4">
           <ThemeToggle />
           
           {isSearchOpen ? (
             <form onSubmit={handleSearch} className="flex items-center absolute left-0 md:static w-full md:w-auto bg-background md:bg-transparent px-6 md:px-0 h-16 md:h-auto z-10">
               <input
                 type="text"
-                placeholder="Buscar productos, marcas, SKU..."
+                placeholder="Buscar productos..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 autoFocus
@@ -88,12 +93,35 @@ export function Header() {
             <span className="sr-only">Carrito</span>
           </Button>
 
-          <Button variant="ghost" size="icon" className="md:hidden rounded-full">
-            <Menu className="w-5 h-5" />
+          <Button variant="ghost" size="icon" className="md:hidden rounded-full" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             <span className="sr-only">Menú</span>
           </Button>
         </div>
       </div>
+
+      {/* Mobile Navigation Dropdown */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden border-t border-foreground/10 bg-background absolute w-full shadow-lg">
+          <nav className="flex flex-col px-6 py-4 space-y-4 text-base font-medium">
+            <Link href="/" className="text-foreground/80 hover:text-gold transition-colors py-2" onClick={closeMenu}>
+              Inicio
+            </Link>
+            <Link href="/perfumeria" className="text-foreground/80 hover:text-gold transition-colors py-2" onClick={closeMenu}>
+              Perfumes
+            </Link>
+            <Link href="/vapes" className="text-foreground/80 hover:text-gold transition-colors py-2" onClick={closeMenu}>
+              Vapes
+            </Link>
+            <Link href="/electronica" className="text-foreground/80 hover:text-gold transition-colors py-2" onClick={closeMenu}>
+              Electrónica
+            </Link>
+            <Link href="/importados-express" className="text-foreground/80 hover:text-gold transition-colors py-2" onClick={closeMenu}>
+              Importados Express
+            </Link>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }
