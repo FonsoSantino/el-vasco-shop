@@ -5,6 +5,7 @@ import path from "path";
 import db from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parsePrice } from "@/lib/utils";
+import { uploadDb } from "@/lib/db-persistence";
 
 type DbCategory = {
   id: string;
@@ -150,6 +151,9 @@ export async function createProduct(formData: FormData) {
     revalidatePath("/vapes");
     revalidatePath("/electronica");
     revalidatePath("/importados-express");
+
+    // Persist DB to Vercel Blob so data survives Lambda container resets
+    await uploadDb();
     
     return { success: true, data: { id, name, slug } };
   } catch (error) {
@@ -304,6 +308,9 @@ export async function updateProduct(id: string, formData: FormData) {
     revalidatePath("/electronica");
     revalidatePath("/importados-express");
     revalidatePath("/");
+
+    // Persist DB to Vercel Blob so data survives Lambda container resets
+    await uploadDb();
     return { success: true };
   } catch (error) {
     console.error("Error updating product:", error);
@@ -378,6 +385,9 @@ export async function deleteProduct(id: string) {
     revalidatePath("/electronica");
     revalidatePath("/importados-express");
     revalidatePath("/");
+
+    // Persist DB to Vercel Blob so data survives Lambda container resets
+    await uploadDb();
     
     return { success: true };
   } catch (error) {
