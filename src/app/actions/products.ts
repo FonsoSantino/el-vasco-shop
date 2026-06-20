@@ -60,6 +60,10 @@ function makeUniqueSlug(baseSlug: string) {
 
 export async function createProduct(formData: FormData) {
   try {
+    // Ensure categories are initialized before attempting to create product
+    const { initCategories } = await import("./categories");
+    await initCategories();
+
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
     const price = parsePrice(formData.get("price") as string);
@@ -207,6 +211,10 @@ export async function getProducts(options?: { categorySlug?: string; limit?: num
 
 export async function updateProduct(id: string, formData: FormData) {
   try {
+    // Ensure categories are initialized
+    const { initCategories } = await import("./categories");
+    await initCategories();
+
     const updates: string[] = [];
     const values: unknown[] = [];
     
