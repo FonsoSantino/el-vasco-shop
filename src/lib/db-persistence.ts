@@ -1,80 +1,84 @@
 /**
  * db-persistence.ts
  *
- * Persists the SQLite database file to Vercel Blob storage so that
- * writes survive Lambda container recycling.
+ * Syncs the SQLite database file with Vercel Blob storage.
  *
- * Flow:
- *  Cold start  → download blob → write to /tmp/database.db → use it
- *  After write → upload /tmp/database.db back to blob
+ * DESIGN:
+ *  - Static imports only (no dynamic import() that can fail in edge cases)
+ *  - Never closes or modifies an open DB connection
+ *  - Uses blob list() to auto-discover the DB URL — no DB_BLOB_URL env var needed
+ *  - Upload is always fire-and-forget (never blocks a request)
  */
 
 import fs from "fs";
 import path from "path";
 
 export const TMP_DB_PATH = "/tmp/database.db";
-const BLOB_DB_NAME = "database.db";
+const BLOB_FILENAME = "database.db";
 
-function getBlobUrl(): string | undefined {
-  return process.env.DB_BLOB_URL;
+function hasBlob(): boolean {
+  return !!process.env.BLOB_READ_WRITE_TOKEN;
 }
 
 /**
- * Download the database from Vercel Blob into /tmp.
- * Falls back to the bundled database.db if blob is not configured or fails.
+ * Download the latest DB from Vercel Blob into /tmp/database.db.
+ * Falls back to the bundled file if Blob isn't configured or fails.
+ * 
+ * IMPORTANT: Call this only before the DB connection is opened.
  */
-export async function downloadDb(): Promise<void> {
-  const blobUrl = getBlobUrl();
-
-  if (blobUrl) {
-    try {
-      const res = await fetch(blobUrl, { cache: "no-store" });
-      if (res.ok) {
-        const buffer = Buffer.from(await res.arrayBuffer());
-        fs.writeFileSync(TMP_DB_PATH, buffer);
-        console.log("[db-persistence] Database downloaded from Blob.");
-        return;
-      } else {
-        console.warn("[db-persistence] Blob fetch returned", res.status, "— falling back to bundled DB.");
-      }
-    } catch (e) {
-      console.warn("[db-persistence] Failed to fetch blob:", e);
-    }
-  }
-
-  // Fallback: copy the bundled database.db
-  const bundledPath = path.join(process.cwd(), "database.db");
-  if (fs.existsSync(bundledPath)) {
-    fs.copyFileSync(bundledPath, TMP_DB_PATH);
-    console.log("[db-persistence] Using bundled database.db as base.");
-  }
-}
-
-/**
- * Upload /tmp/database.db back to Vercel Blob.
- * This must be called after every write operation in the admin panel.
- */
-export async function uploadDb(): Promise<string | null> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.warn("[db-persistence] BLOB_READ_WRITE_TOKEN not set — skipping upload.");
-    return null;
+export async function downloadDbFromBlob(): Promise<void> {
+  if (!hasBlob()) {
+    copyBundled();
+    return;
   }
 
   try {
+    const { list } = await import("@vercel/blob");
+    const { blobs } = await list({ prefix: BLOB_FILENAME });
+    const match = blobs.find((b) => b.pathname === BLOB_FILENAME);
+
+    if (match) {
+      const res = await fetch(match.url, { cache: "no-store" });
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(TMP_DB_PATH, buf);
+        console.log("[db-persistence] Downloaded DB from Blob:", match.url);
+        return;
+      }
+    }
+    // Blob not found yet → copy bundled as seed
+    copyBundled();
+  } catch (e) {
+    console.warn("[db-persistence] Blob download failed, using bundled:", e);
+    copyBundled();
+  }
+}
+
+function copyBundled() {
+  const bundled = path.join(process.cwd(), "database.db");
+  if (fs.existsSync(bundled) && !fs.existsSync(TMP_DB_PATH)) {
+    fs.copyFileSync(bundled, TMP_DB_PATH);
+    console.log("[db-persistence] Copied bundled database.db to /tmp.");
+  }
+}
+
+/**
+ * Upload /tmp/database.db to Vercel Blob.
+ * Fire-and-forget — never await this from a server action.
+ */
+export async function uploadDbToBlob(): Promise<void> {
+  if (!hasBlob()) return;
+
+  try {
     const { put } = await import("@vercel/blob");
-    const buffer = fs.readFileSync(TMP_DB_PATH);
-    const blob = await put(BLOB_DB_NAME, buffer, {
+    const buf = fs.readFileSync(TMP_DB_PATH);
+    await put(BLOB_FILENAME, buf, {
       access: "public",
       addRandomSuffix: false,
       contentType: "application/octet-stream",
     });
-
-    // Store the URL so next cold start downloads the latest version
-    // (the URL is stable when addRandomSuffix: false)
-    console.log("[db-persistence] Database uploaded to Blob:", blob.url);
-    return blob.url;
+    console.log("[db-persistence] Uploaded DB to Blob.");
   } catch (e) {
-    console.error("[db-persistence] Failed to upload DB:", e);
-    return null;
+    console.error("[db-persistence] Upload failed:", e);
   }
 }

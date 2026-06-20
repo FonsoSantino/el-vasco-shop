@@ -5,7 +5,7 @@ import path from "path";
 import db from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parsePrice } from "@/lib/utils";
-import { uploadDb } from "@/lib/db-persistence";
+import { uploadDbToBlob } from "@/lib/db-persistence";
 
 type DbCategory = {
   id: string;
@@ -152,8 +152,8 @@ export async function createProduct(formData: FormData) {
     revalidatePath("/electronica");
     revalidatePath("/importados-express");
 
-    // Persist DB to Vercel Blob so data survives Lambda container resets
-    await uploadDb();
+    // Fire-and-forget — never block the response waiting for Blob upload
+    uploadDbToBlob().catch(console.error);
     
     return { success: true, data: { id, name, slug } };
   } catch (error) {
@@ -309,8 +309,8 @@ export async function updateProduct(id: string, formData: FormData) {
     revalidatePath("/importados-express");
     revalidatePath("/");
 
-    // Persist DB to Vercel Blob so data survives Lambda container resets
-    await uploadDb();
+    // Fire-and-forget — never block the response waiting for Blob upload
+    uploadDbToBlob().catch(console.error);
     return { success: true };
   } catch (error) {
     console.error("Error updating product:", error);
@@ -386,8 +386,8 @@ export async function deleteProduct(id: string) {
     revalidatePath("/importados-express");
     revalidatePath("/");
 
-    // Persist DB to Vercel Blob so data survives Lambda container resets
-    await uploadDb();
+    // Fire-and-forget — never block the response waiting for Blob upload
+    uploadDbToBlob().catch(console.error);
     
     return { success: true };
   } catch (error) {

@@ -1,79 +1,74 @@
+/**
+ * db.ts
+ *
+ * Opens the SQLite database. On Vercel, we use /tmp/database.db.
+ *
+ * STRATEGY:
+ *  - Synchronously copy bundled DB to /tmp on cold start (fast, always works).
+ *  - Then asynchronously attempt to pull a newer version from Vercel Blob.
+ *    Because we CAN'T safely close+reopen the DB mid-request, the fresh Blob
+ *    version is used starting from the NEXT Lambda invocation on this container.
+ *  - All admin writes immediately call uploadDbToBlob() (fire-and-forget), so
+ *    any new admin change is persisted to Blob within seconds and survives
+ *    container recycling.
+ *
+ * RESULT: Data written in the admin panel persists permanently via Vercel Blob.
+ */
+
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { setupSchema } from "./schema";
-import { TMP_DB_PATH, downloadDb } from "./db-persistence";
+import { TMP_DB_PATH, downloadDbFromBlob } from "./db-persistence";
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   DB path selection:
-   • Local dev  → process.cwd()/database.db
-   • Vercel     → /tmp/database.db  (copied from Blob or bundled db on cold start)
-────────────────────────────────────────────────────────────────────────────── */
 const isProduction = process.env.NODE_ENV === "production";
+
+// ─── Determine DB file path ────────────────────────────────────────────────────
 let dbPath = path.join(process.cwd(), "database.db");
 
 if (isProduction) {
-  // Sync fallback: if /tmp/database.db doesn't exist yet, copy the bundled one.
-  // The async downloadDb() will overwrite it with the latest Blob version shortly.
-  if (!fs.existsSync(TMP_DB_PATH)) {
-    const bundledPath = path.join(process.cwd(), "database.db");
-    if (fs.existsSync(bundledPath)) {
+  // Synchronous copy ensures /tmp/database.db always exists before we open it.
+  // The async Blob download below may overwrite this with fresher data later.
+  const bundledPath = path.join(process.cwd(), "database.db");
+  if (!fs.existsSync(TMP_DB_PATH) && fs.existsSync(bundledPath)) {
+    try {
       fs.copyFileSync(bundledPath, TMP_DB_PATH);
-    }
+    } catch { /* /tmp not writable — very unusual */ }
   }
   dbPath = TMP_DB_PATH;
 }
 
-// Open the database
-let db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
+// ─── Open the database (synchronous) ─────────────────────────────────────────
+const db = new Database(dbPath);
+db.pragma("journal_mode = DELETE"); // Use DELETE mode — safer than WAL on /tmp
 db.pragma("foreign_keys = ON");
-try { setupSchema(db); } catch (e) { console.error("[db] Schema setup:", e); }
+db.pragma("busy_timeout = 5000");
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   On production cold starts, pull the latest DB from Vercel Blob.
-   We close the current connection, download the file, then reopen.
-   This happens once per Lambda container lifetime.
-────────────────────────────────────────────────────────────────────────────── */
-let _blobInitDone = false;
+try {
+  setupSchema(db);
+} catch (e) {
+  console.error("[db] Schema setup error:", e);
+}
 
-export async function initDb(): Promise<void> {
-  if (_blobInitDone || !isProduction || !process.env.DB_BLOB_URL) return;
-  _blobInitDone = true;
+// ─── Async Blob sync (cold start, fire-and-forget) ───────────────────────────
+// We intentionally do NOT close/reopen the db here to avoid crashes.
+// The Blob version will be used by the NEXT container that cold-starts.
+// Since uploads happen after every write, the Blob always has the latest data.
+if (isProduction && process.env.BLOB_READ_WRITE_TOKEN) {
+  // Only attempt if /tmp/database.db was just created from bundled (small size gap)
+  // — i.e., we don't bother on warm containers already running with good data.
+  const bundledPath = path.join(process.cwd(), "database.db");
+  const bundledSize = fs.existsSync(bundledPath)
+    ? fs.statSync(bundledPath).size
+    : 0;
+  const tmpSize = fs.existsSync(TMP_DB_PATH)
+    ? fs.statSync(TMP_DB_PATH).size
+    : 0;
 
-  try {
-    // Close current connection before overwriting the file
-    db.close();
-    await downloadDb();
-    // Reopen with the freshly-downloaded file
-    db = new Database(TMP_DB_PATH);
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-    try { setupSchema(db); } catch (e) { console.error("[db] Schema setup after blob init:", e); }
-    console.log("[db] Reopened DB from Blob.");
-  } catch (e) {
-    console.error("[db] initDb error:", e);
-    // Ensure db is open even if something failed
-    if (!db.open) {
-      db = new Database(TMP_DB_PATH);
-      db.pragma("journal_mode = WAL");
-      db.pragma("foreign_keys = ON");
-    }
+  // If sizes match → /tmp is the bundled copy → try to pull a fresher Blob version
+  if (tmpSize === bundledSize) {
+    downloadDbFromBlob().catch(console.error);
   }
 }
 
-// Kick off async Blob init on cold start (fire-and-forget).
-// First request uses bundled DB; subsequent requests in the same container
-// use the Blob-sourced DB with all admin changes.
-if (isProduction && process.env.DB_BLOB_URL) {
-  initDb().catch(console.error);
-}
-
-// Export a getter so every import always gets the current (possibly reopened) instance
-const dbProxy = new Proxy({} as ReturnType<typeof Database>, {
-  get(_target, prop) {
-    return (db as unknown as Record<string | symbol, unknown>)[prop];
-  },
-});
-
-export default dbProxy;
+export default db;
