@@ -406,9 +406,14 @@ export async function deleteProduct(id: string) {
         const { del } = await import("@vercel/blob");
         try { await del(product.imageId); } catch (e) { console.error("Error deleting blob on product delete", e); }
       } else if (!product.imageId.startsWith("http")) {
-        const filePath = path.join(process.cwd(), "public", product.imageId);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
+        // Vercel's filesystem is read-only; silently skip local file deletion in production
+        try {
+          const filePath = path.join(process.cwd(), "public", product.imageId);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } catch (e: any) {
+          if (e.code !== "EROFS") console.error("Error deleting local file:", e);
         }
       }
     }
