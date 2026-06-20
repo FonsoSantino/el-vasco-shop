@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     ],
   },
   serverExternalPackages: ['better-sqlite3'],
+  // Bundle the SQLite database file with every serverless function so it
+  // can be copied to /tmp at runtime (Vercel's writable temp directory).
+  outputFileTracingIncludes: {
+    "/**": ["./database.db"],
+  },
 };
 
 export default nextConfig;

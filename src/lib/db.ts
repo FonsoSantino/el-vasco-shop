@@ -5,19 +5,22 @@ import { setupSchema } from './schema';
 
 let dbPath = path.join(process.cwd(), 'database.db');
 
-// VERCEL HACK: Vercel file system is read-only. 
-// We must copy the database to /tmp so better-sqlite3 can open it and write WAL/shm files.
-// WARNING: Data added via admin panel on Vercel will be LOST when the lambda restarts.
+// VERCEL: The file system is read-only at runtime.
+// We copy the bundled database.db (with seed data/categories) to /tmp on every
+// cold start so better-sqlite3 can open it in read-write mode.
+// NOTE: Any data written at runtime (new products, etc.) is ephemeral — it will
+// be lost when the Lambda container is recycled. For persistent writes, migrate
+// to a hosted database (e.g. Turso / PlanetScale).
 if (process.env.NODE_ENV === 'production') {
   const tmpPath = path.join('/tmp', 'database.db');
-  if (!fs.existsSync(tmpPath)) {
-    try {
-      if (fs.existsSync(dbPath)) {
-        fs.copyFileSync(dbPath, tmpPath);
-      }
-    } catch (e) {
-      console.error('Error copying DB to /tmp', e);
+  try {
+    // Always overwrite so the /tmp copy is never a stale, empty file
+    // from a previous warm invocation that missed the seed data.
+    if (fs.existsSync(dbPath)) {
+      fs.copyFileSync(dbPath, tmpPath);
     }
+  } catch (e) {
+    console.error('Error copying DB to /tmp:', e);
   }
   dbPath = tmpPath;
 }
