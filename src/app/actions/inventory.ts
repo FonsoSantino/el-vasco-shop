@@ -53,7 +53,8 @@ export async function createInventoryMovement(formData: FormData) {
     revalidatePath("/admin/productos");
     
     const { uploadDbToBlob } = await import("@/lib/db-persistence");
-    await uploadDbToBlob();
+    const { reloadDb } = await import("@/lib/db");
+    await uploadDbToBlob(); await reloadDb();
     
     return { success: true };
   } catch (error: any) {

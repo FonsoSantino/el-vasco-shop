@@ -4,10 +4,9 @@
  * Syncs the SQLite database file with Vercel Blob storage.
  *
  * DESIGN:
- *  - Static imports only (no dynamic import() that can fail in edge cases)
- *  - Never closes or modifies an open DB connection
  *  - Uses blob list() to auto-discover the DB URL — no DB_BLOB_URL env var needed
- *  - Upload is always fire-and-forget (never blocks a request)
+ *  - uploadDbToBlob() always awaited — never fire-and-forget
+ *  - After every upload, the in-memory DB instance is reloaded from the new file
  */
 
 import fs from "fs";
@@ -23,8 +22,7 @@ function hasBlob(): boolean {
 /**
  * Download the latest DB from Vercel Blob into /tmp/database.db.
  * Falls back to the bundled file if Blob isn't configured or fails.
- * 
- * IMPORTANT: Call this only before the DB connection is opened.
+ * Always overwrites any existing local copy.
  */
 export async function downloadDbFromBlob(): Promise<void> {
   if (!hasBlob()) {
@@ -56,7 +54,7 @@ export async function downloadDbFromBlob(): Promise<void> {
 
 function copyBundled() {
   const bundled = path.join(process.cwd(), "database.db");
-  if (fs.existsSync(bundled) && !fs.existsSync(TMP_DB_PATH)) {
+  if (fs.existsSync(bundled)) {
     fs.copyFileSync(bundled, TMP_DB_PATH);
     console.log("[db-persistence] Copied bundled database.db to /tmp.");
   }
@@ -64,7 +62,9 @@ function copyBundled() {
 
 /**
  * Upload /tmp/database.db to Vercel Blob.
- * Fire-and-forget — never await this from a server action.
+ * ALWAYS await this from server actions — never fire-and-forget.
+ * Vercel freezes the Lambda immediately after the response, so if you don't
+ * await, the upload will be killed before it completes.
  */
 export async function uploadDbToBlob(): Promise<void> {
   if (!hasBlob()) return;
@@ -77,7 +77,7 @@ export async function uploadDbToBlob(): Promise<void> {
       addRandomSuffix: false,
       contentType: "application/octet-stream",
     });
-    console.log("[db-persistence] Uploaded DB to Blob.");
+    console.log("[db-persistence] Uploaded DB to Blob successfully.");
   } catch (e) {
     console.error("[db-persistence] Upload failed:", e);
   }
