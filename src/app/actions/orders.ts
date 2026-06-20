@@ -2,7 +2,6 @@
 
 import db from "@/lib/db";
 import { uploadDbToBlob } from "@/lib/db-persistence";
-import { reloadDb } from "@/lib/db";
 
 export async function createOrder(data: any) {
   try {
@@ -28,7 +27,7 @@ export async function createOrder(data: any) {
       insertItem.run(itemId, orderId, item.id, item.name, item.price, item.quantity);
     }
 
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     return { success: true, orderId };
   } catch (error: any) {
     console.error("Error creating order:", error);
@@ -49,7 +48,7 @@ export async function getOrders() {
 export async function updateOrderStatus(orderId: string, status: string) {
   try {
     db.prepare("UPDATE Orders SET status = ? WHERE id = ?").run(status, orderId);
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     return { success: true };
   } catch (error: any) {
     console.error("Error updating order status:", error);

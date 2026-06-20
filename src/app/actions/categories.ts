@@ -3,7 +3,6 @@
 import db from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { uploadDbToBlob } from "@/lib/db-persistence";
-import { reloadDb } from "@/lib/db";
 
 const DEFAULT_CATEGORIES = [
   { id: "cat-1", name: "Vapes", slug: "vapes", description: "Cigarrillos electrónicos y vapes desechables" },
@@ -87,7 +86,7 @@ export async function updateCategory(id: string, formData: FormData) {
     revalidatePath("/electronica");
     revalidatePath("/importados-express");
     
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     return { success: true };
   } catch (error: any) {
     console.error("Error updating category:", error);
@@ -109,7 +108,7 @@ export async function createCategory(formData: FormData) {
     `).run(id, name, slug, description, filters);
     
     revalidatePath("/admin/categorias");
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     return { success: true };
   } catch (error: any) {
     console.error("Error creating category:", error);
@@ -128,7 +127,7 @@ export async function deleteCategory(id: string) {
     db.prepare("DELETE FROM Category WHERE id = ?").run(id);
     
     revalidatePath("/admin/categorias");
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     return { success: true };
   } catch (error: any) {
     console.error("Error deleting category:", error);

@@ -36,7 +36,8 @@ export async function downloadDbFromBlob(): Promise<void> {
     const match = blobs.find((b) => b.pathname === BLOB_FILENAME);
 
     if (match) {
-      const res = await fetch(match.url, { cache: "no-store" });
+      const bustUrl = `${match.url}?_t=${Date.now()}`;
+      const res = await fetch(bustUrl, { cache: "no-store" });
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer());
         fs.writeFileSync(TMP_DB_PATH, buf);

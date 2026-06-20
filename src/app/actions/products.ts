@@ -6,7 +6,6 @@ import db from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parsePrice } from "@/lib/utils";
 import { uploadDbToBlob } from "@/lib/db-persistence";
-import { reloadDb } from "@/lib/db";
 
 type DbCategory = {
   id: string;
@@ -166,7 +165,7 @@ export async function createProduct(formData: FormData) {
     revalidatePath("/importados-express");
 
     // Await the upload. In Serverless, background tasks are killed when response is sent.
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     
     return { success: true, data: { id, name, slug } };
   } catch (error) {
@@ -342,7 +341,7 @@ export async function updateProduct(id: string, formData: FormData) {
     revalidatePath("/");
 
     // Await the upload. In Serverless, background tasks are killed when response is sent.
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     return { success: true };
   } catch (error) {
     console.error("Error updating product:", error);
@@ -429,7 +428,7 @@ export async function deleteProduct(id: string) {
     revalidatePath("/");
 
     // Await the upload. In Serverless, background tasks are killed when response is sent.
-    await uploadDbToBlob(); await reloadDb();
+    await uploadDbToBlob();
     
     return { success: true };
   } catch (error) {
