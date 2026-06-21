@@ -18,7 +18,7 @@ export default function AdminLogin() {
     setIsLoading(true);
     setError("");
 
-    if (username === "admin" && password === "admin123") {
+    if (username === "admin" && password === '123asd123A48088597!""') {
       document.cookie = "admin_session=true; path=/; max-age=86400";
       router.push("/admin");
     } else {
